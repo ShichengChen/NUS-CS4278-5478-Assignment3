@@ -9,6 +9,7 @@ from const import *
 from math import *
 import copy
 import argparse
+import time
 
 ROBOT_SIZE = 0.2552  # width and height of robot in terms of stage unit
 
@@ -98,7 +99,7 @@ class Planner:
 
     def _goal_callback(self, msg):
         self.goal = msg
-        self.generate_plan()
+        self.generate_plan2()
 
     def _get_goal_position(self):
         goal_position = self.goal.pose.position
@@ -177,7 +178,85 @@ class Planner:
         message.angular.z = az
         return message
 
-    def generate_plan(self):
+    def generate_plan1(self):
+        # a.pose.position.x = x
+        # a.pose.position.y = y
+        # a.pose.orientation.z
+        print(self.goal)
+        self.stable_map = self.map.copy()
+        for y in range(self.map.shape[0]):
+            for x in range(self.map.shape[1]):
+                if (self.map[y, x] == 100):
+                    self.stable_map[y - 5:y + 5, x - 5:x + 5] = 100
+
+        d = -np.ones((np.ceil(self.world_height * self.resolution), np.ceil(self.world_width * self.resolution)),
+                     dtype=np.int64)
+        res = self.resolution
+        print('d.shape', d.shape)
+
+        def check(x, y, nx, ny, map):
+            nx, ny = int(nx / res), int(ny / res)
+            x, y = int(x / res), int(y / res)
+            if not (0 <= ny < self.world_height and 0 <= nx < self.world_width): return False
+            if (y == ny):
+                for i in range(min(x, nx), max(x, nx)+1):
+                    if (map[y, i] == 100):
+                        return False
+            if (x == nx):
+                for i in range(min(y, ny), max(y, ny)+1):
+                    if (map[i, x] == 100):
+                        return False
+            return True
+
+        que = []
+        que.append((self.goal.pose.position.x, self.goal.pose.position.y, 0))
+        print('goal', self.goal.pose.position.y, self.goal.pose.position.x)
+        d[self.goal.pose.position.y, self.goal.pose.position.x] = 0
+        dir = [1, 0, -1, 0, 0, 1, 0, -1]
+        while (que != []):
+            cur = que.pop(0)
+            cx, cy, cw = cur
+            print(cur)
+            for i in range(4):
+                nx, ny = cx + dir[i * 2], cy + dir[i * 2 + 1]
+                if (check(cx, cy, nx, ny, self.aug_map) and d[ny, nx] == -1):
+                    d[ny, nx] = cw + 1
+                    que.append((nx, ny, cw + 1))
+        print(d)
+        print(self.aug_map[::10, ::10])
+        self.action_seq = []
+        self.d = d
+        start = self.get_current_discrete_state()
+        cx, cy, cd = start
+        ma = {(1, 0, 0): 0, (-1, 0, 2): 0, (0, 1, 1): 0, (0, -1, 3): 0,  # forward
+              (1, 0, 1): 1, (-1, 0, 3): 1, (0, 1, 2): 1, (0, -1, 0): 1,  # right
+              (1, 0, 3): 2, (-1, 0, 1): 2, (0, 1, 0): 2, (0, -1, 2): 2,  # left
+              (1, 0, 2): 3, (-1, 0, 0): 3, (0, 1, 3): 3, (0, -1, 1): 3, }  # left,left
+        turn = {"L": (0, 1), "R": (0, -1)}
+        print(cx, cy, d[cy, cx])
+        # 0 east 1 north 2 west 3 south
+        while d[cy, cx] != 0:
+            for i in range(4):
+                nx, ny = cx + dir[i * 2], cy + dir[i * 2 + 1]
+                if (check(cx, cy, nx, ny, self.aug_map) and d[ny, nx] == d[cy, cx] - 1):
+                    print(nx, ny, d[ny, nx])
+                    mx, my = nx - cx, ny - cy
+                    if (ma[(mx, my, cd)] == 1):
+                        self.action_seq.append(turn['R'])
+                        cd = (cd - 1) % 4
+                    elif (ma[(mx, my, cd)] == 2):
+                        self.action_seq.append(turn['L'])
+                        cd = (cd + 1) % 4
+                    elif (ma[(mx, my, cd)] == 3):
+                        self.action_seq.append(turn['L'])
+                        self.action_seq.append(turn['L'])
+                        cd = (cd + 2) % 4
+                    self.action_seq.append((1, 0))
+                    cx, cy = nx, ny
+                    break
+                assert (i != 3)
+        print(self.action_seq)
+    def generate_plan2(self):
         """TODO: FILL ME! This function generates the plan for the robot, given a goal.
         You should store the list of actions into self.action_seq.
 
@@ -190,83 +269,74 @@ class Planner:
 
         Each action could be: (v, \omega) where v is the linear velocity and \omega is the angular velocity
         """
-        # a.pose.position.x = x
-        # a.pose.position.y = y
-        # a.pose.orientation.z
-        #print(self.goal)
-        self.stable_map=self.map.copy()
-        for y in range(self.map.shape[0]):
-            for x in range(self.map.shape[1]):
-                if(self.map[y,x]==100):
-                    self.stable_map[y-5:y+5,x-5:x+5]=100
+        d = ((1e8))*np.ones((np.ceil(self.world_height), np.ceil(self.world_width)),dtype=np.float64)
+        pre = -np.ones((np.ceil(self.world_height), np.ceil(self.world_width),2),dtype=np.int64)
+        res = self.resolution
+        cuben=int(1/res)
+        print('res',res,'ncude',cuben)
+        print('d.shape', d.shape)
 
-        d=-np.ones((self.world_height*self.resolution,self.world_width*self.resolution),dtype=np.int64)
-        res=self.resolution
-        print('d.shape',d.shape)
-
-        def check(x,y,nx,ny,map):
-            nx,ny=int(nx / res),int(ny / res)
-            x,y=int(x / res),int(y / res)
-            if not (0 <= ny < self.world_height and 0 <= nx < self.world_width):return False
-            if (y == ny):
-                for i in range(min(x,nx),max(x,nx)):
-                    if(map[y,i]==100):
-                        return False
-            if (x == nx):
-                for i in range(min(y, ny), max(y, ny)):
-                    if (map[i, x] == 100):
-                        return False
+        def check(x, y, nx, ny, map):
+            nx, ny = int(nx), int(ny)
+            x, y = int(x), int(y)
+            if not (0 <= ny < self.world_height and 0 <= nx < self.world_width): return False
+            if (map[ny, nx] == 100): return False
+            if (map[y, nx] == 100): return False
+            if (map[ny, x] == 100): return False
             return True
 
+        import heapq
+        goalx, goaly = int(self.goal.pose.position.x / res), int(self.goal.pose.position.y / res)
         que = []
-        que.append((self.goal.pose.position.x, self.goal.pose.position.y, 0))
-        print('goal', self.goal.pose.position.y, self.goal.pose.position.x)
-        d[self.goal.pose.position.y, self.goal.pose.position.x] = 0
-        dir = [1, 0, -1, 0, 0, 1, 0, -1]
-        while(que!=[]):
-            cur=que.pop(0)
-            cx,cy,cw=cur
-            print(cur)
-            for i in range(4):
-                nx,ny=cx+dir[i*2],cy+dir[i*2+1]
-                if(check(cx,cy,nx,ny,self.stable_map) and d[ny,nx]==-1):
-                    d[ny,nx]=cw+1
-                    que.append((nx,ny,cw+1))
-        print(d)
-        print(self.aug_map[::10,::10])
+        heapq.heappush(que,(0,goalx,goaly))
+        d[goaly, goalx] = 0
+        print('goal', goaly,goalx)
+        pre[goaly, goalx]=(-1,-1)
+        dir = [(1, 0), (-1, 0), (0, 1), (0, -1),(1,1),(1,-1),(-1,-1),(-1,1)]
+        while (que != []):
+            cw, cx, cy  = heapq.heappop(que)
+            print(cx, cy, cw)
+            if(d[cy,cx] < cw):continue
+            for dx,dy in dir:
+                nx, ny = cx + dx, cy + dy
+                print('nx,ny',nx,ny)
+                w = np.sqrt(2) if (abs(dx) + abs(dy) == 2) else 1
+                if (check(cx, cy, nx, ny, self.aug_map) and d[ny, nx] > cw+w):
+                    d[ny, nx] = cw + w
+                    heapq.heappush(que, (d[ny, nx], nx, ny))
+                    pre[ny,nx]=(cy,cx)
+        #print(d[::10, ::10])
+        #print(self.aug_map[::10, ::10])
         self.action_seq = []
-        self.d=d
+        self.d = d
+
+        ma = {(1,0):0,(1,1):0.5,(0,1):1,(-1,1):1.5,(-1,0):2,
+              (-1,-1):2.5,(0,-1):3,(1,-1):3.5}
+        turn = (0, np.pi/2)
+        forward={'f':(1/(1/res/2),0),'hf':(1/(1/res/2)*np.sqrt(2),0)}
         start = self.get_current_discrete_state()
-        cx,cy,cd=start
-        ma = {(1, 0, 0): 0, (-1, 0, 2): 0, (0, 1, 1): 0, (0, -1,3): 0,  #forward
-              (1, 0, 1): 1, (-1, 0, 3): 1, (0, 1, 2): 1, (0, -1,0): 1, # right
-              (1, 0, 3): 2, (-1, 0, 1): 2, (0, 1, 0): 2, (0, -1,2): 2, #left
-              (1, 0, 2): 3, (-1, 0, 0): 3, (0, 1, 3): 3, (0, -1,1): 3,} #left,left
-        turn = {"L":(0, 1), "R":(0, -1)}
-        print(cx,cy,d[cy,cx])
-        #0 east 1 north 2 west 3 south
-        while d[cy,cx]!=0:
-            for i in range(4):
-                nx,ny=cx+dir[i*2],cy+dir[i*2+1]
-                if(check(cx,cy,nx,ny,self.aug_map) and d[ny,nx]==d[cy,cx]-1):
-                    print(nx,ny,d[ny, nx])
-                    mx,my=nx-cx,ny-cy
-                    if(ma[(mx,my,cd)]==1):
-                        self.action_seq.append(turn['R'])
-                        cd = (cd - 1) % 4
-                    elif(ma[(mx,my,cd)]==2):
-                        self.action_seq.append(turn['L'])
-                        cd = (cd + 1) % 4
-                    elif(ma[(mx,my,cd)]==3):
-                        self.action_seq.append(turn['L'])
-                        self.action_seq.append(turn['L'])
-                        cd = (cd + 2) % 4
-                    self.action_seq.append((1, 0))
-                    cx,cy=nx,ny
-                    break
-                assert (i!=3)
-        #self.action_seq=[(0,1)]*5
-        print(self.action_seq)
+        cx, cy, cd = int(start[0] / res), int(start[1] / res), start[2]
+        print('start',cx, cy, d[cy, cx])
+        # 0 east 1 north 2 west 3 south
+        while not (pre[cy, cx] == np.array([-1, -1])).all():
+            prey,prex=pre[cy,cx]
+            print('pre[cy,cx]',pre[cy,cx])
+            mx, my = prex - cx, prey - cy
+            ad = ma[(mx,my)]
+            #print('ad,cd',ad,cd)
+            while(abs(ad - cd)>(1e-7)):
+                cd = (cd + 0.5)%4
+                print('cd,cx,cy',cd,cx,cy)
+                self.action_seq.append(turn)
+            if(int(cd+0.6)==int(cd)):
+                self.action_seq.append(forward['f'])
+            else:
+                self.action_seq.append(forward['hf'])
+            cy,cx=prey,prex
+            assert check(cx, cy, prex, prey, self.aug_map)
+
+        #self.action_seq=[(0,np.pi)]+[(1,0)]*14+[(0,-np.pi/2)]+[(1/(1/res/2)*np.sqrt(2),0)]*cuben
+
 
 
     def get_current_continuous_state(self):
@@ -312,7 +382,7 @@ class Planner:
         Returns:
             bool -- True for collision, False for non-collision
         """
-        if(self.aug_map[y,x]==100):return True
+        if(self.map[y,x]==100):return True
         return False
 
     def motion_predict(self, x, y, theta, v, w, dt=0.5, frequency=10):
@@ -391,6 +461,9 @@ class Planner:
             self.controller.publish(msg)
             rospy.sleep(0.6)
 
+
+            print(self.get_current_continuous_state())
+
     def publish_discrete_control(self):
         """publish the discrete controls
         """
@@ -417,11 +490,13 @@ class Planner:
         Please use this function to publish your controls in task 3, MDP. DO NOT CHANGE THE PARAMETERS :)
         We will test your policy using the same function.
         """
-        current_state = self.get_current_state()
+        #current_state = self.get_current_state()
+        current_state = self.get_current_discrete_state()
         actions = []
         new_state = current_state
         while not self._check_goal(current_state):
-            current_state = self.get_current_state()
+            #current_state = self.get_current_state()
+            current_state = self.get_current_discrete_state()
             action = self.action_table[current_state[0],
                                        current_state[1], current_state[2] % 4]
             if action == (1, 0):
@@ -439,7 +514,8 @@ class Planner:
             self.controller.publish(msg)
             rospy.sleep(0.6)
             time.sleep(1)
-            current_state = self.get_current_state()
+            #current_state = self.get_current_state()
+            current_state = self.get_current_discrete_state()
 
 
 if __name__ == "__main__":
@@ -466,14 +542,17 @@ if __name__ == "__main__":
         resolution = 0.05
 
     # TODO: You should change this value accordingly
-    inflation_ratio = 6
+    inflation_ratio = 10
     planner = Planner(width, height, resolution, inflation_ratio=inflation_ratio)
     planner.set_goal(goal[0], goal[1])
     if planner.goal is not None:
-        planner.generate_plan()
+        #planner.generate_plan1()
+        planner.generate_plan2()
 
     # You could replace this with other control publishers
-    planner.publish_discrete_control()
+    #planner.publish_discrete_control()
+    planner.publish_control()
+    #planner.publish_stochastic_control()
 
     # save your action sequence
     result = np.array(planner.action_seq)
