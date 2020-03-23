@@ -37,7 +37,7 @@ class Planner:
         """init function of the base planner. You should develop your own planner
         using this class as a base.
 
-        For standard mazes, width = 200, height = 200, resolution = 0.05. 
+        For standard mazes, width = 200, height = 200, resolution = 0.05.
         For COM1 map, width = 2500, height = 983, resolution = 0.02
 
         Arguments:
@@ -71,24 +71,24 @@ class Planner:
             '/mobile_base/commands/velocity', Twist, queue_size=10)
         rospy.sleep(1)
 
-        #print('self.map',rospy.wait_for_message('/map', OccupancyGrid).data)
+        # print('self.map',rospy.wait_for_message('/map', OccupancyGrid).data)
 
     def map_callback(self):
         """Get the occupancy grid and inflate the obstacle by some pixels. You should implement the obstacle inflation yourself to handle uncertainty.
         """
         self.map = rospy.wait_for_message('/map', OccupancyGrid).data
-        self.map = np.array(self.map).reshape(self.world_height,self.world_width)
+        self.map = np.array(self.map).reshape(self.world_height, self.world_width)
 
         # TODO: FILL ME! implement obstacle inflation function and define self.aug_map = new_mask
 
         # you should inflate the map to get self.aug_map
-        #self.aug_map = copy.deepcopy(self.map)
-        self.aug_map=self.map.copy()
-        b=self.inflation_ratio
+        # self.aug_map = copy.deepcopy(self.map)
+        self.aug_map = self.map.copy()
+        b = self.inflation_ratio
         for y in range(self.map.shape[0]):
             for x in range(self.map.shape[1]):
-                if(self.map[y,x]==100):
-                    self.aug_map[y-b:y+b,x-b:x+b]=100
+                if (self.map[y, x] == 100):
+                    self.aug_map[y - b:y + b, x - b:x + b] = 100
 
     def _pose_callback(self, msg):
         """get the raw pose of the robot from ROS
@@ -140,7 +140,7 @@ class Planner:
             float -- distance to the goal
         """
         goal = self._get_goal_position()
-        return sqrt((pose[0] - goal[0])**2 + (pose[1] - goal[1])**2)
+        return sqrt((pose[0] - goal[0]) ** 2 + (pose[1] - goal[1]) ** 2)
 
     def _check_goal(self, pose):
         """Simple goal checking criteria, which only requires the current position is less than 0.25 from the goal position. The orientation is ignored
@@ -179,40 +179,28 @@ class Planner:
         message.angular.z = az
         return message
 
-    def check(self, x, y, nx, ny, map, re,verb=False):
+    def check(self, x, y, nx, ny, map, re):
         nx, ny = int(nx / re), int(ny / re)
         x, y = int(x / re), int(y / re)
-        #if (verb):
-        #    print(nx,ny,x,y)
-        #    print(self.world_height,self.world_width)
         if not (0 <= ny < self.world_height and 0 <= nx < self.world_width): return False
-        if not (0 <= y < self.world_height and 0 <= x < self.world_width): return False
-        if(x==0 or y==0 or nx==0 or ny==0):return False
-        if(map[y,x]==100 or map[ny,nx]==100):return False
-
+        if (x == 0 or y == 0): return False
+        if (map[y, x] == 100): return False
         if (y == ny):
-            for cx in range(min(x, nx), max(x, nx) + 1):
-                if (map[y, cx] == 100):
+            for i in range(min(x, nx), max(x, nx) + 1):
+                if (map[y, i] == 100):
                     return False
         if (x == nx):
-            for cy in range(min(y, ny), max(y, ny) + 1):
-                if (map[cy, x] == 100):
+            for i in range(min(y, ny), max(y, ny) + 1):
+                if (map[i, x] == 100):
                     return False
-        if(x!=nx and y != ny):
-            for cx in range(min(x, nx), max(x, nx) + 1):
-                if (map[y, cx] == 100 or map[ny, cx] == 100):
-                    return False
-            for cy in range(min(y, ny), max(y, ny) + 1):
-                if (map[cy, x] == 100 or map[cy, nx] == 100):
-                    return False
-        if re==1:return map[ny,nx]!=100 and map[y,nx]!=100 and map[ny,x]!=100
+        if re == 1: return map[ny, nx] != 100 and map[y, nx] != 100 and map[ny, x] != 100
         return True
-
 
     def generate_plan1(self):
         # a.pose.position.x = x
         # a.pose.position.y = y
         # a.pose.orientation.z
+        print(self.goal)
         res = self.resolution
         d = -np.ones((np.ceil(self.world_height * res), np.ceil(self.world_width * res)),
                      dtype=np.int64)
@@ -224,14 +212,10 @@ class Planner:
         while (que != []):
             cur = que.pop(0)
             cx, cy, cw = cur
-
-            #print(cur)
-            for dx,dy in dir:
+            print(cur)
+            for dx, dy in dir:
                 nx, ny = cx + dx, cy + dy
-                if (cx == 21 and cy == 14):
-                    print(nx,ny)
-                    print(self.check(cx, cy, nx, ny, self.aug_map,res))
-                if (self.check(cx, cy, nx, ny, self.aug_map,res) and d[ny, nx] == -1):
+                if (self.check(cx, cy, nx, ny, self.aug_map, res) and d[ny, nx] == -1):
                     d[ny, nx] = cw + 1
                     que.append((nx, ny, cw + 1))
         print(d)
@@ -246,9 +230,9 @@ class Planner:
         print('start', cx, cy, d[cy, cx])
         # 0 east 1 north 2 west 3 south
         while d[cy, cx] != 0:
-            for idx,(dx,dy) in enumerate(dir):
+            for idx, (dx, dy) in enumerate(dir):
                 nx, ny = cx + dx, cy + dy
-                if (self.check(cx, cy, nx, ny, self.aug_map,res) and d[ny, nx] == d[cy, cx] - 1):
+                if (self.check(cx, cy, nx, ny, self.aug_map, res) and d[ny, nx] == d[cy, cx] - 1):
                     print(nx, ny, d[ny, nx])
                     mx, my = nx - cx, ny - cy
                     ad = ma[(mx, my)]
@@ -266,14 +250,15 @@ class Planner:
                     break
                 assert (idx != 3)
         print(self.action_seq)
+
     def generate_plan2(self):
         """TODO: this is 2222222222222222222222222222222222
         """
-        d = ((1e8))*np.ones((np.ceil(self.world_height), np.ceil(self.world_width)),dtype=np.float64)
-        pre = -np.ones((np.ceil(self.world_height), np.ceil(self.world_width),2),dtype=np.int64)
+        d = ((1e8)) * np.ones((np.ceil(self.world_height), np.ceil(self.world_width)), dtype=np.float64)
+        pre = -np.ones((np.ceil(self.world_height), np.ceil(self.world_width), 2), dtype=np.int64)
         res = self.resolution
-        cuben=int(1/res)
-        print('res',res,'ncude',cuben)
+        cuben = int(1 / res)
+        print('res', res, 'ncude', cuben)
         print('d.shape', d.shape)
 
         import heapq
@@ -282,85 +267,86 @@ class Planner:
         heapq.heappush(que, (0, goalx, goaly))
         d[goaly, goalx] = 0
         print('goal', goaly, goalx)
-        pre[goaly, goalx]=(-1,-1)
-        dir = [(1, 0), (-1, 0), (0, 1), (0, -1),(1,1),(1,-1),(-1,-1),(-1,1)]
+        pre[goaly, goalx] = (-1, -1)
+        dir = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, -1), (-1, 1)]
         while (que != []):
-            cw, cx, cy  = heapq.heappop(que)
-            #print(cx, cy, cw)
-            if(d[cy,cx] < cw):continue
-            for dx,dy in dir:
+            cw, cx, cy = heapq.heappop(que)
+            print(cx, cy, cw)
+            if (d[cy, cx] < cw): continue
+            for dx, dy in dir:
                 nx, ny = cx + dx, cy + dy
-                #print('nx,ny',nx,ny)
+                print('nx,ny', nx, ny)
                 w = np.sqrt(2) if (abs(dx) + abs(dy) == 2) else 1
-                if (self.check(cx, cy, nx, ny, self.aug_map,1) and d[ny, nx] > cw+w):
+                if (self.check(cx, cy, nx, ny, self.aug_map, 1) and d[ny, nx] > cw + w):
                     d[ny, nx] = cw + w
                     heapq.heappush(que, (d[ny, nx], nx, ny))
-                    pre[ny,nx]=(cy,cx)
+                    pre[ny, nx] = (cy, cx)
 
         self.action_seq = []
         self.d = d
 
-        ma = {(1,0):0,(1,1):1,(0,1):2,(-1,1):3,(-1,0):4,
-              (-1,-1):5,(0,-1):6,(1,-1):7}
-        turn = {'l':(0, np.pi/2),'r':(0, -np.pi/2)}
-        forward={'f':(1/(1/res/2),0),'hf':(1/(1/res/2)*np.sqrt(2),0)}
+        ma = {(1, 0): 0, (1, 1): 1, (0, 1): 2, (-1, 1): 3, (-1, 0): 4,
+              (-1, -1): 5, (0, -1): 6, (1, -1): 7}
+        turn = {'l': (0, np.pi / 2), 'r': (0, -np.pi / 2)}
+        forward = {'f': (1 / (1 / res / 2), 0), 'hf': (1 / (1 / res / 2) * np.sqrt(2), 0)}
         start = self.get_current_discrete_state()
-        cx, cy, cd = int(start[0] / res), int(start[1] / res), int(start[2])*2
-        print('start',cx, cy, d[cy, cx])
+        cx, cy, cd = int(start[0] / res), int(start[1] / res), int(start[2]) * 2
+        print('start', cx, cy, d[cy, cx])
         # 0 east 2 north 4 west 6 south
         while not (pre[cy, cx] == np.array([-1, -1])).all():
-            prey,prex=pre[cy,cx]
-            print('pre[cy,cx]',pre[cy,cx])
+            prey, prex = pre[cy, cx]
+            print('pre[cy,cx]', pre[cy, cx])
             mx, my = prex - cx, prey - cy
-            ad = ma[(mx,my)]
-            #print('ad,cd',ad,cd)
-            cntl = ((ad-cd)+8)%8
-            cntr = 8-cntl
-            cd=ad
-            if(cntl<=cntr):
-                print('cntl',cntl)
-                for i in range(cntl):self.action_seq.append(turn['l'])
+            ad = ma[(mx, my)]
+            # print('ad,cd',ad,cd)
+            cntl = ((ad - cd) + 8) % 8
+            cntr = 8 - cntl
+            cd = ad
+            if (cntl <= cntr):
+                print('cntl', cntl)
+                for i in range(cntl): self.action_seq.append(turn['l'])
             else:
                 print('cntr', cntr)
                 for i in range(cntr): self.action_seq.append(turn['r'])
-            if(ad%2==0):
+            if (ad % 2 == 0):
                 self.action_seq.append(forward['f'])
             else:
                 self.action_seq.append(forward['hf'])
-            cy,cx=prey,prex
-            assert self.check(cx, cy, prex, prey, self.aug_map,1)
+            cy, cx = prey, prex
+            assert self.check(cx, cy, prex, prey, self.aug_map, 1)
 
-        #self.action_seq=[(0,np.pi)]+[(1,0)]*14+[(0,-np.pi/2)]+[(1/(1/res/2)*np.sqrt(2),0)]*cuben
+        # self.action_seq=[(0,np.pi)]+[(1,0)]*14+[(0,-np.pi/2)]+[(1/(1/res/2)*np.sqrt(2),0)]*cuben
 
     def generate_plan3(self):
         """TODO: this is 333333333333333333333333333333333333333333
 
         """
         res = self.resolution
-        dh,dw=int(np.ceil(self.world_height*res)), int(np.ceil(self.world_width*res))
-        dhsafe,dwsafe=int(np.ceil(self.world_height*res))+3, int(np.ceil(self.world_width*res))+3
-        d = np.ones((dhsafe,dwsafe),dtype=np.int64)*(1e8)
-        R = np.ones((dhsafe,dwsafe,dhsafe,dwsafe),dtype=np.float64)*(-1e6)
+        dh, dw = int(np.ceil(self.world_height * res)), int(np.ceil(self.world_width * res))
+        dhsafe, dwsafe = int(np.ceil(self.world_height * res)) + 3, int(np.ceil(self.world_width * res)) + 3
+        d = np.ones((dhsafe, dwsafe), dtype=np.float64) * (-1e6)
+        R = np.ones((dhsafe, dwsafe, dhsafe, dwsafe), dtype=np.float64) * (-1e6)
         pre = -np.ones((np.ceil(self.world_height), np.ceil(self.world_width), 2), dtype=np.int64)
         wd = np.zeros((dh, dw), dtype=np.float64)
 
-        print('res',res)
-
+        print('res', res)
 
         for y in range(dh):
             for x in range(dw):
                 if self.check(x, y, x, y, self.aug_map, res) == False: continue
-                hw=0
-                for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1),(1,1),(-1,-1),(1,-1),(-1,1)]:
-                    if self.check(x,y,x+dx,y+dy,self.aug_map,res)==False:
-                        #print(x,y,x+dx,y+dy)
-                        hw=1
-                wd[y,x]=hw
+                dir = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)]
+                hw = 0
+                for dx, dy in dir:
+                    if self.check(x, y, x + dx, y + dy, self.aug_map, res) == True: hw = 1
+                wd[y, x] = hw
 
-
-        dir = [(1, 0), (-1, 0), (0, 1), (0, -1)]
-        import heapq
         goalx, goaly = int(self.goal.pose.position.x), int(self.goal.pose.position.y)
+        d[0][goaly, goalx] = 100
+        print('goal', goaly, goalx)
+        dir = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+
+        import heapq
+        goalx, goaly = int(self.goal.pose.position.x / res), int(self.goal.pose.position.y / res)
         que = []
         heapq.heappush(que, (0, goalx, goaly))
         d[goaly, goalx] = 0
@@ -371,52 +357,91 @@ class Planner:
             if (d[cy, cx] < cw): continue
             for dx, dy in dir:
                 nx, ny = cx + dx, cy + dy
-                if(self.check(cx, cy, nx, ny, self.aug_map, res,verb=True)==False):continue
                 print('nx,ny', nx, ny)
-                w = 1e4 if wd[ny,nx]==1 else 1
-                if (d[ny, nx] > cw + w):
+                w = 1e4 if wd[ny, nx] == 1 else 1
+                if (self.check(cx, cy, nx, ny, self.aug_map, 1) and d[ny, nx] > cw + w):
                     d[ny, nx] = cw + w
                     heapq.heappush(que, (d[ny, nx], nx, ny))
                     pre[ny, nx] = (cy, cx)
+
+        # def wrongact(x,y,dx,dy):
+        #     nx1, ny1 = x + dx, y + dy
+        #     nx2, ny2 = x + dx, y + dy
+        #     if (dy == 0):
+        #         nx1 -= 1
+        #         nx2 += 1
+        #     if (dx == 0):
+        #         ny1 -= 1
+        #         ny2 += 1
+        #     return nx1,ny1,nx2, ny2
+        # for i in range(1000):
+        #     ni=i+1
+        #     d[ni % 2] = -1e6
+        #     d[ni % 2][goaly, goalx] = 100
+        #     for y in range(dh):
+        #         for x in range(dw):
+        #             if self.check(x,y,x,y,self.aug_map,res)==False:continue
+        #             for dx,dy in dir:
+        #                 nx,ny=x+dx,y+dy
+        #                 nx1,ny1,nx2,ny2=wrongact(x,y,dx,dy)
+        #                 a=0.90*d[i%2][ny,nx]
+        #                 b=0.05*d[i%2][ny1,nx1]
+        #                 c=0.05*d[i%2][ny2,nx2]
+        #                 if self.check(x, y, nx, ny, self.aug_map, res) == False or \
+        #                     self.check(x, y, nx1, ny1, self.aug_map, res) == False or \
+        #                     self.check(x, y, nx2, ny2, self.aug_map, res) == False:
+        #                     r=-0.01
+        #                 else:
+        #                     r=0
+        #                 #d[ni%2][y,x]=max(a-1+b-2+c-2-(1e3/(wd[y, x])**4),d[ni%2][y,x])
+        #                 d[ni%2][y,x]=max(0.99*(a+b+c)+r,d[ni%2][y,x])
+
+        d = d[0]
         self.d = d
-        #np.set_printoptions(threshold=np.inf)
-        print('d[1][:6]',d[1][:6],wd[1][:6])
-        print('d[2][:6]',d[2][:6],wd[2][:6])
-        print('d[3][:6]',d[3][:6],wd[3][:6])
-        print('d[4][:6]',d[4][:6],wd[4][:6])
-        print('d[5][:6]',d[5][:6],wd[5][:6])
-        self.action_table={}
+        # np.set_printoptions(threshold=np.inf)
+        print('d[1][:6]', d[1][:6], wd[1][:6])
+        print('d[2][:6]', d[2][:6], wd[2][:6])
+        print('d[3][:6]', d[3][:6], wd[3][:6])
+        print('d[4][:6]', d[4][:6], wd[4][:6])
+        print('d[5][:6]', d[5][:6], wd[5][:6])
+        self.action_table = {}
         ma = {(1, 0): 0, (0, 1): 1, (-1, 0): 2, (0, -1): 3}
-        turn = {'l':(0, 1),'r':(0, -1)}
-        forward=(1,0)
+        turn = {'l': (0, 1), 'r': (0, -1)}
+        forward = (1, 0)
         start = self.get_current_discrete_state()
         cx, cy, cd = start
-        print('start',cx, cy, d[cy, cx])
+        print('start', cx, cy, d[cy, cx])
         # 0 east 1 north 2 west 3 south
+        vis = np.zeros_like(d)
         for y in range(dh):
             for x in range(dw):
-                if (self.check(x, y, x, y, self.aug_map, res)==False or (pre[y,x]==np.array([-1, -1])).all()):continue
-                prey, prex = pre[y, x]
-                #print('pre[y, x]', pre[y, x])
-                #print('y,x', y,x)
-                mx, my = prex - x, prey - y
-                assert abs(mx)!=abs(my)
-                ad = ma[(mx, my)]
+                maxi, ad = -1e8, -1
+                for idx, (dx, dy) in enumerate(dir):
+                    if self.check(x, y, x + dx, y + dy, self.aug_map, res) == False: continue
+                    nx, ny = x + dx, y + dy
+                    nx1, ny1, nx2, ny2 = wrongact(x, y, dx, dy)
+                    cur = d[ny, nx] * 0.9 + d[ny1, nx1] * 0.05 + d[ny2, nx2] * 0.05
+                    if (cur > maxi):
+                        maxi = cur
+                        ad = ma[(dx, dy)]
+                if (ad == -1): continue
                 for cd in range(4):
                     if (ad == cd):
-                        self.action_table[(x,y,cd)]=forward
+                        self.action_table[(x, y, cd)] = forward
                     else:
                         cntl = ((ad - cd) + 4) % 4
                         cntr = 4 - cntl
-                        if(cntl<=cntr):self.action_table[(x,y,cd)]=turn['l']
-                        else:self.action_table[(x,y,cd)]=turn['r']
-
+                        if (cntl <= cntr):
+                            self.action_table[(x, y, cd)] = turn['l']
+                        else:
+                            self.action_table[(x, y, cd)] = turn['r']
 
     def get_current_state(self):
         return self.get_current_discrete_state()
+
     def get_current_continuous_state(self):
-        """Our state is defined to be the tuple (x,y,theta). 
-        x and y are directly extracted from the pose information. 
+        """Our state is defined to be the tuple (x,y,theta).
+        x and y are directly extracted from the pose information.
         Theta is the rotation of the robot on the x-y plane, extracted from the pose quaternion. For our continuous problem, we consider angles in radians
 
         Returns:
@@ -433,31 +458,33 @@ class Planner:
         return (x, y, phi)
 
     def get_current_discrete_state(self):
-        """Our state is defined to be the tuple (x,y,theta). 
-        x and y are directly extracted from the pose information. 
+        """Our state is defined to be the tuple (x,y,theta).
+        x and y are directly extracted from the pose information.
         Theta is the rotation of the robot on the x-y plane, extracted from the pose quaternion. For our continuous problem, we consider angles in radians
 
         Returns:
             tuple -- x, y, \theta of the robot in discrete space, e.g., (1, 1, 1) where the robot is facing north
         """
         x, y, phi = self.get_current_continuous_state()
+
         def rd(x): return int(round(x))
+
         return rd(x), rd(y), rd(phi / (np.pi / 2))
-        #return rd(x), rd(y), phi
+        # return rd(x), rd(y), phi
 
     def collision_checker(self, x, y):
         """TODO: FILL ME!
         You should implement the collision checker.
         Hint: you should consider the augmented map and the world size
-        
+
         Arguments:
             x {float} -- current x of robot
             y {float} -- current y of robot
-        
+
         Returns:
             bool -- True for collision, False for non-collision
         """
-        if(self.map[y,x]==100):return True
+        if (self.map[y, x] == 100): return True
         return False
 
     def motion_predict(self, x, y, theta, v, w, dt=0.5, frequency=10):
@@ -468,7 +495,7 @@ class Planner:
             x {float} -- current x of robot
             y {float} -- current y of robot
             theta {float} -- current theta of robot
-            v {float} -- linear velocity 
+            v {float} -- linear velocity
             w {float} -- angular velocity
 
         Keyword Arguments:
@@ -484,12 +511,12 @@ class Planner:
         for i in range(num_steps):
             if w != 0:
                 dx = - v / w * np.sin(theta) + v / w * \
-                    np.sin(theta + w / frequency)
+                     np.sin(theta + w / frequency)
                 dy = v / w * np.cos(theta) - v / w * \
-                    np.cos(theta + w / frequency)
+                     np.cos(theta + w / frequency)
             else:
-                dx = v*np.cos(theta)/frequency
-                dy = v*np.sin(theta)/frequency
+                dx = v * np.cos(theta) / frequency
+                dy = v * np.sin(theta) / frequency
             x += dx
             y += dy
 
@@ -519,8 +546,8 @@ class Planner:
         Returns:
             tuple -- next x, y, theta; return None if has collision
         """
-        w_radian = w * np.pi/2
-        first_step = self.motion_predict(x, y, theta*np.pi/2, v, w_radian)
+        w_radian = w * np.pi / 2
+        first_step = self.motion_predict(x, y, theta * np.pi / 2, v, w_radian)
         if first_step:
             second_step = self.motion_predict(
                 first_step[0], first_step[1], first_step[2], v, w_radian)
@@ -536,40 +563,37 @@ class Planner:
             self.controller.publish(msg)
             rospy.sleep(0.6)
 
-
             print(self.get_current_continuous_state())
 
         result = np.array(planner.action_seq)
-        np.savetxt('2_maze_{}_{}.txt'.format(self.goal.pose.position.x,self.goal.pose.position.y),
+        np.savetxt('2_maze_{}_{}.txt'.format(self.goal.pose.position.x, self.goal.pose.position.y),
                    result, fmt="%.2e")
 
     def publish_discrete_control(self):
         """publish the discrete controls
         """
-        print('start',self.get_current_continuous_state())
+        print('start', self.get_current_continuous_state())
         # (0, 1) left
         # (0, -1) RIGHT
 
         for action in self.action_seq:
-            current_state = self.get_current_state()
-            print('d[]',self.d[current_state[1],current_state[0]])
             msg = self.create_control_msg(
-                action[0], 0, 0, 0, 0, action[1]*np.pi/2)
+                action[0], 0, 0, 0, 0, action[1] * np.pi / 2)
             self.controller.publish(msg)
             rospy.sleep(0.6)
-            #print(self.get_current_continuous_state())
-            #print(self.get_current_discrete_state())
+            # print(self.get_current_continuous_state())
+            print(self.get_current_discrete_state())
             self.controller.publish(msg)
             rospy.sleep(0.6)
-            #print(self.get_current_continuous_state())
-            print(self.get_current_continuous_state())
+            # print(self.get_current_continuous_state())
+            print(self.get_current_discrete_state())
 
         result = np.array(planner.action_seq)
         np.savetxt('1_maze_{}_{}.txt'.format(self.goal.pose.position.x, self.goal.pose.position.y),
                    result, fmt="%.2e")
 
     def publish_stochastic_control(self):
-        """publish stochastic controls in MDP. 
+        """publish stochastic controls in MDP.
         In MDP, we simulate the stochastic dynamics of the robot as described in the assignment description.
         Please use this function to publish your controls in task 3, MDP. DO NOT CHANGE THE PARAMETERS :)
         We will test your policy using the same function.
@@ -581,26 +605,26 @@ class Planner:
             current_state = self.get_current_state()
             action = self.action_table[current_state[0],
                                        current_state[1], current_state[2] % 4]
-            #print('d[]',self.d[current_state[1],current_state[0]])
-            print('current_state',current_state[0],current_state[1])
+            # print('d[]',self.d[current_state[1],current_state[0]])
+            print('current_state', current_state[0], current_state[1])
             if action == (1, 0):
                 r = np.random.rand()
                 if r < 0.90:
                     action = (1, 0)
                 elif r < 0.95:
-                    action = (np.pi/2, 1)
+                    action = (np.pi / 2, 1)
                 else:
-                    action = (np.pi/2, -1)
-            print("Sending actions:", action[0], action[1]*np.pi/2)
-            msg = self.create_control_msg(action[0], 0, 0, 0, 0, action[1]*np.pi/2)
+                    action = (np.pi / 2, -1)
+            print("Sending actions:", action[0], action[1] * np.pi / 2)
+            msg = self.create_control_msg(action[0], 0, 0, 0, 0, action[1] * np.pi / 2)
             self.controller.publish(msg)
             rospy.sleep(0.6)
             self.controller.publish(msg)
             rospy.sleep(0.6)
-            #time.sleep(1)
+            # time.sleep(1)
             current_state = self.get_current_state()
 
-        action_table={}
+        action_table = {}
         for key in self.action_table.keys():
             action_table[str(key)] = self.action_table[key]
         with open('3_maze_{}_{}.json'.format(self.goal.pose.position.x, self.goal.pose.position.y), 'w') as fp:
@@ -633,13 +657,15 @@ if __name__ == "__main__":
         resolution = 0.05
 
     # TODO: You should change this value accordingly
-    inflation_ratio = 13
+    inflation_ratio = 10
     planner = Planner(width, height, resolution, inflation_ratio=inflation_ratio)
     planner.set_goal(goal[0], goal[1])
     if planner.goal is not None:
-        if(args.plan==1):planner.generate_plan1()
-        elif(args.plan==2):planner.generate_plan2()
-        elif(args.plan==3):
+        if (args.plan == 1):
+            planner.generate_plan1()
+        elif (args.plan == 2):
+            planner.generate_plan2()
+        elif (args.plan == 3):
             planner.generate_plan3()
             # with open('3_com1_43_10.json') as f:
             #     planner.action_table = json.load(f)
@@ -650,9 +676,8 @@ if __name__ == "__main__":
             # planner.action_table=action_table
             # print(planner.action_table)
         else:
-            #planner.action_seq=[(1,0),(1,0),(-1,0),(-1,0)]
-            planner.action_seq=[(0,np.pi),(0,np.pi),(1,0),(1,0),(1,0),(1,0),(0,-np.pi)]
-
+            # planner.action_seq=[(1,0),(1,0),(-1,0),(-1,0)]
+            planner.action_seq = [(0, np.pi), (0, np.pi), (1, 0), (1, 0), (1, 0), (1, 0), (0, -np.pi)]
 
     # You could replace this with other control publishers
 
@@ -660,13 +685,12 @@ if __name__ == "__main__":
         planner.publish_discrete_control()
     elif (args.plan == 2):
         planner.publish_control()
-    elif(args.plan == 3):
+    elif (args.plan == 3):
         planner.publish_stochastic_control()
     else:
         planner.publish_control()
 
     # save your action sequence
-
 
     # for MDP, please dump your policy table into a json file
     # dump_action_table(planner.action_table, 'mdp_policy.json')
