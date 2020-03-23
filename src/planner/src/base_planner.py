@@ -269,15 +269,19 @@ class Planner:
     def generate_plan2(self):
         """TODO: this is 2222222222222222222222222222222222
         """
-        d = ((1e8))*np.ones((np.ceil(self.world_height), np.ceil(self.world_width)),dtype=np.float64)
-        pre = -np.ones((np.ceil(self.world_height), np.ceil(self.world_width),2),dtype=np.int64)
         res = self.resolution
-        cuben=int(1/res)
-        print('res',res,'ncude',cuben)
+        multi=0.1
+        cuben = int(1 / res)
+        print('res', res, 'ncude', cuben)
+
+        d = ((1e8))*np.ones((np.ceil(self.world_height*multi), np.ceil(self.world_width*multi)),dtype=np.float64)
+        pre = -np.ones((np.ceil(self.world_height*multi), np.ceil(self.world_width*multi),2),dtype=np.int64)
+
+
         print('d.shape', d.shape)
 
         import heapq
-        goalx, goaly = int(self.goal.pose.position.x / res), int(self.goal.pose.position.y / res)
+        goalx, goaly = int(self.goal.pose.position.x / res*multi), int(self.goal.pose.position.y / res*multi)
         que = []
         heapq.heappush(que, (0, goalx, goaly))
         d[goaly, goalx] = 0
@@ -292,7 +296,7 @@ class Planner:
                 nx, ny = cx + dx, cy + dy
                 #print('nx,ny',nx,ny)
                 w = np.sqrt(2) if (abs(dx) + abs(dy) == 2) else 1
-                if (self.check(cx, cy, nx, ny, self.aug_map,1) and d[ny, nx] > cw+w):
+                if (self.check(cx, cy, nx, ny, self.aug_map,multi) and d[ny, nx] > cw+w):
                     d[ny, nx] = cw + w
                     heapq.heappush(que, (d[ny, nx], nx, ny))
                     pre[ny,nx]=(cy,cx)
@@ -303,9 +307,9 @@ class Planner:
         ma = {(1,0):0,(1,1):1,(0,1):2,(-1,1):3,(-1,0):4,
               (-1,-1):5,(0,-1):6,(1,-1):7}
         turn = {'l':(0, np.pi/2),'r':(0, -np.pi/2)}
-        forward={'f':(1/(1/res/2),0),'hf':(1/(1/res/2)*np.sqrt(2),0)}
+        forward={'f':(1/(1/res/2)/multi,0),'hf':(1/(1/res/2)*np.sqrt(2)/multi,0)}
         start = self.get_current_discrete_state()
-        cx, cy, cd = int(start[0] / res), int(start[1] / res), int(start[2])*2
+        cx, cy, cd = int(start[0] / self.resolution*multi), int(start[1] / self.resolution*multi), int(start[2])*2
         print('start',cx, cy, d[cy, cx])
         # 0 east 2 north 4 west 6 south
         while not (pre[cy, cx] == np.array([-1, -1])).all():
@@ -328,7 +332,7 @@ class Planner:
             else:
                 self.action_seq.append(forward['hf'])
             cy,cx=prey,prex
-            assert self.check(cx, cy, prex, prey, self.aug_map,1)
+            assert self.check(cx, cy, prex, prey, self.aug_map,multi)
 
         #self.action_seq=[(0,np.pi)]+[(1,0)]*14+[(0,-np.pi/2)]+[(1/(1/res/2)*np.sqrt(2),0)]*cuben
 
@@ -371,7 +375,7 @@ class Planner:
             if (d[cy, cx] < cw): continue
             for dx, dy in dir:
                 nx, ny = cx + dx, cy + dy
-                if(self.check(cx, cy, nx, ny, self.aug_map, res,verb=True)==False):continue
+                if(self.check(cx, cy, nx, ny, self.aug_map, res)==False):continue
                 print('nx,ny', nx, ny)
                 w = 1e4 if wd[ny,nx]==1 else 1
                 if (d[ny, nx] > cw + w):
@@ -633,7 +637,7 @@ if __name__ == "__main__":
         resolution = 0.05
 
     # TODO: You should change this value accordingly
-    inflation_ratio = 13
+    inflation_ratio = 10
     planner = Planner(width, height, resolution, inflation_ratio=inflation_ratio)
     planner.set_goal(goal[0], goal[1])
     if planner.goal is not None:
