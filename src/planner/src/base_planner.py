@@ -343,19 +343,18 @@ class Planner:
         res = self.resolution
         dh,dw=int(np.ceil(self.world_height*res)), int(np.ceil(self.world_width*res))
         dhsafe,dwsafe=int(np.ceil(self.world_height*res))+3, int(np.ceil(self.world_width*res))+3
-        d = np.ones((dhsafe,dwsafe),dtype=np.int64)*(1e8)
-        R = np.ones((dhsafe,dwsafe,dhsafe,dwsafe),dtype=np.float64)*(-1e6)
         pre = -np.ones((np.ceil(self.world_height), np.ceil(self.world_width), 2), dtype=np.int64)
-        wd = np.zeros((dh, dw), dtype=np.float64)
-
+        wd = np.zeros((dhsafe, dwsafe), dtype=np.float64)
+        print('dh,dw',dh,dw)
         print('res',res)
-
-
         for y in range(dh):
             for x in range(dw):
-                if self.check(x, y, x, y, self.aug_map, res) == False: continue
+                if self.check(x, y, x, y, self.aug_map, res) == False:
+                    wd[y, x] = 1
+                    continue
                 hw=0
-                for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1),(1,1),(-1,-1),(1,-1),(-1,1)]:
+                c=1.1
+                for dx, dy in [(c, 0), (-c, 0), (0, c), (0, -c),(c,c),(-c,-c),(c,-c),(-c,c)]:
                     if self.check(x,y,x+dx,y+dy,self.aug_map,res)==False:
                         #print(x,y,x+dx,y+dy)
                         hw=1
@@ -363,32 +362,58 @@ class Planner:
 
 
         dir = [(1, 0), (-1, 0), (0, 1), (0, -1)]
-        import heapq
         goalx, goaly = int(self.goal.pose.position.x), int(self.goal.pose.position.y)
-        que = []
-        heapq.heappush(que, (0, goalx, goaly))
+        d = np.ones((dhsafe, dwsafe), dtype=np.float64) * (1e8)
         d[goaly, goalx] = 0
         print('goal', goaly, goalx)
-        while (que != []):
-            cw, cx, cy = heapq.heappop(que)
-            print(cx, cy, cw)
-            if (d[cy, cx] < cw): continue
-            for dx, dy in dir:
-                nx, ny = cx + dx, cy + dy
-                if(self.check(cx, cy, nx, ny, self.aug_map, res)==False):continue
-                print('nx,ny', nx, ny)
-                w = 1e4 if wd[ny,nx]==1 else 1
-                if (d[ny, nx] > cw + w):
-                    d[ny, nx] = cw + w
-                    heapq.heappush(que, (d[ny, nx], nx, ny))
-                    pre[ny, nx] = (cy, cx)
-        self.d = d
+        for iter in range(dhsafe*dwsafe):
+            change=0
+            for y in range(dh):
+                for x in range(dw):
+                    if(self.check(x,y,x,y,self.aug_map,res)==False or (y==goaly and x==goalx)):continue
+                    for dx,dy in dir:
+                        if (self.check(x, y, x + dx, y + dy, self.aug_map, res) == False): continue
+                        ny=[y + dy,y + dy,y + dy]
+                        nx=[x + dx,x + dx,x + dx]
+                        if(dx==0):
+                            ny[1]+=1
+                            ny[2]-=1
+                        if(dy==0):
+                            nx[1]+=1
+                            nx[2]-=1
+                        #if (self.check(x, y, x + dx, y + dy, self.aug_map, res) == False):
+                        reward = [1e4 if wd[ny[i],nx[i]]==1 else 1 for i in range(3)]
+                        d0=((d[ny[0],nx[0]])*0.99+reward[0])
+                        d1=np.sum((d[ny[1:],nx[1:]])*0.01)
+                        #not the exact probability, need to tune hyperparamters here to get better results.
+
+                        #d1=np.sum([1e4 if d[ny[i],nx[i]]==1e8 else d[ny[i],nx[i]] for i in range(1,3)])*0.1
+                        #eliminate the influence of inf!
+
+                        # d0=((d[ny[0],nx[0]]+reward[0])*0.9)
+                        # d1=np.sum((d[ny[1:],nx[1:]]+reward[1:])*0.1)
+                        if(d[y,x]>d0+d1):#get min positive reward is same with get max negtive reward
+                            change=1
+                            d[y, x] = d0 + d1
+                            pre[y,x]=(ny[0],nx[0])
+            if(change==0):
+                print('iter num',iter)
+                break
+
+        #print('d[7,31]',d[7,31])
+        start = self.get_current_discrete_state()
+        cx, cy, cd = start
+        import cv2
+        img=self.aug_map.copy()
+        while not (pre[cy, cx] == np.array([-1, -1])).all():
+            prey,prex=pre[cy,cx]
+            img[(int(cy/res),int(cx/res))]=255
+            cy,cx=prey,prex
+        cv2.imwrite('result.jpg',img)
         #np.set_printoptions(threshold=np.inf)
-        print('d[1][:6]',d[1][:6],wd[1][:6])
-        print('d[2][:6]',d[2][:6],wd[2][:6])
-        print('d[3][:6]',d[3][:6],wd[3][:6])
-        print('d[4][:6]',d[4][:6],wd[4][:6])
-        print('d[5][:6]',d[5][:6],wd[5][:6])
+        #print(d)
+        self.d = d
+        print('d[10:15,4:7]',d[10:15,4:7])
         self.action_table={}
         ma = {(1, 0): 0, (0, 1): 1, (-1, 0): 2, (0, -1): 3}
         turn = {'l':(0, 1),'r':(0, -1)}
@@ -544,8 +569,8 @@ class Planner:
             print(self.get_current_continuous_state())
 
         result = np.array(planner.action_seq)
-        np.savetxt('2_maze_{}_{}.txt'.format(self.goal.pose.position.x,self.goal.pose.position.y),
-                   result, fmt="%.2e")
+        np.savetxt('task2/2_maze_{}_{}.txt'.format(self.goal.pose.position.x,self.goal.pose.position.y),
+                   result)
 
     def publish_discrete_control(self):
         """publish the discrete controls
@@ -569,7 +594,7 @@ class Planner:
             print(self.get_current_continuous_state())
 
         result = np.array(planner.action_seq)
-        np.savetxt('1_maze_{}_{}.txt'.format(self.goal.pose.position.x, self.goal.pose.position.y),
+        np.savetxt('task1/1_maze_{}_{}.txt'.format(self.goal.pose.position.x, self.goal.pose.position.y),
                    result, fmt="%.2e")
 
     def publish_stochastic_control(self):
@@ -587,9 +612,14 @@ class Planner:
                                        current_state[1], current_state[2] % 4]
             #print('d[]',self.d[current_state[1],current_state[0]])
             print('current_state',current_state[0],current_state[1])
+            print('d',self.d[current_state[1],current_state[0]])
+            # print('d',self.d[current_state[1]+1,current_state[0]])
+            # print('d',self.d[current_state[1],current_state[0]]+1)
+            # print('d',self.d[current_state[1],current_state[0]]-1)
+            # print('d',self.d[current_state[1]-1,current_state[0]])
             if action == (1, 0):
                 r = np.random.rand()
-                if r < 0.90:
+                if r < 1.90:
                     action = (1, 0)
                 elif r < 0.95:
                     action = (np.pi/2, 1)
@@ -606,8 +636,8 @@ class Planner:
 
         action_table={}
         for key in self.action_table.keys():
-            action_table[str(key)] = self.action_table[key]
-        with open('3_maze_{}_{}.json'.format(self.goal.pose.position.x, self.goal.pose.position.y), 'w') as fp:
+            action_table[str(key)[1:-1]] = self.action_table[key]
+        with open('task3/3_maze_{}_{}.json'.format(self.goal.pose.position.x, self.goal.pose.position.y), 'w') as fp:
             json.dump(action_table, fp)
 
 
